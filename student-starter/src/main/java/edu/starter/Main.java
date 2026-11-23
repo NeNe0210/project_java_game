@@ -7,9 +7,10 @@ import java.util.Scanner;
 public final class Main {
     
     /**
-     * Invariant: 0 <= hp <= max_hp && 0 <= resources <= 10 && attack_damage >= 10
+     * Invariant: 0 <= hp <= max_hp && 0 <= resources <= 10 && attack_damage >= 0
+     *            (attack_damage holds only the POWER bonus; total attack == baseAttack() + attack_damage)
      */
-    static class Combatant {
+    static class Standard {
         private String name;
         private int max_hp;
         private int hp;
@@ -20,26 +21,31 @@ public final class Main {
         /**
          * @pre max_hp > 0
          * @post this.name == name && this.max_hp == max_hp && hp == max_hp
-         *       && attack_damage == 10 && resources == 5 && pending_defense == false
+         *       && attack_damage == 0 && resources == 5 && pending_defense == false
          */
-        Combatant(String name, int max_hp) {
+        Standard(String name, int max_hp) {
             this.name = name;
             this.max_hp = max_hp;
             this.hp = max_hp;        
-            this.attack_damage = 10;
+            this.attack_damage = 0;
             this.resources = 5;
         }
         /**
          * @pre max_hp > 0 && resources >= 0 && resources <= 10
          * @post this.resources == resources (all other fields as in the other constructor)
          */
-        Combatant(String name, int max_hp, int resources) {
+        Standard(String name, int max_hp, int resources) {
             this(name, max_hp);
             if (resources < 0 || resources > 10) {
                 throw new IllegalArgumentException("resources must be 0-10, got " + resources);
             }
             this.resources = resources;
         }
+        /**
+         * Damage blocked when defending. Subclasses override to change it.
+         * @post $ret == 5
+         */
+        int blockAmount() {return 5;}
         /**
          * @post $ret == pending_defense
          */
@@ -72,14 +78,14 @@ public final class Main {
             return this.hp <= 0;}
         /**
          * @pre damage >= 0
-         * @post if $prev(pending_defense): hp == max(0, $prev(hp) - max(0, damage - 5))
+         * @post if $prev(pending_defense): hp == max(0, $prev(hp) - max(0, damage - blockAmount()))
          *       else:                      hp == max(0, $prev(hp) - damage)
          *       && pending_defense == false
          *       && resources == $prev(resources)
          */
         void take_damage(int damage) {
             if (this.pending_defense) {
-                damage = damage - 5;
+                damage = damage - blockAmount();
                 if (damage < 0) {damage = 0;}
                 this.pending_defense = false;}
             this.hp -= damage;
@@ -112,10 +118,15 @@ public final class Main {
                 else {
                 return false;}}
         /**
-         * @post $ret == attack_damage
+         * Attack before POWER bonus. Subclasses override to change it.
+         * @post $ret == 10
+         */
+        int baseAttack() { return 10; }
+        /**
+         * @post $ret == baseAttack() + attack_damage
          */
         int getattack() {
-            return this.attack_damage;}
+            return this.attack_damage + baseAttack();}
         /**
          * @post hp == min(max_hp, $prev(hp) + 25) && resources == $prev(resources)
          *       && attack_damage == $prev(attack_damage)
@@ -141,6 +152,23 @@ public final class Main {
         this.rewardClaimed = true;
         return true;}
         }
+    /** Glass cannon profile: 80 HP, base attack 12, blocks 5. */
+    static class Glass_canon extends Standard {
+        @Override
+        int baseAttack() { return 12; }
+        Glass_canon(String name) {
+            super(name, 80);
+        }}
+    /** Tank profile: 130 HP, base attack 8, blocks 7. */
+    static class Tank extends Standard {
+            @Override
+            int baseAttack() { return 8; }
+            @Override
+            int blockAmount() { return 7; }
+            Tank (String name) {
+                super(name, 130);
+            }}
+        
         /** The two rewards the player can choose after winning Encounter 1. */
 
         enum reward {HEAL, attackBOOST
@@ -152,7 +180,7 @@ public final class Main {
          * @post ($ret == true  && enemy.isDead() && !player.isDead())
          *       || ($ret == false && player.isDead())
          */
-        static boolean playBattle(Combatant player, Combatant enemy, Scanner in) {
+        static boolean playBattle(Standard player, Standard enemy, Scanner in) {
             System.out.println("=== Encounter " + encounter + " ===");
             Runnable[] enemyMoves = {
                 () -> player.take_damage(10),};
@@ -178,9 +206,24 @@ public final class Main {
                 if (args.length > 0 && args[0].equals("test")) {
                     Tests.runTests();
                     return;}
-                Combatant player = new Combatant("player", 100);
-                Combatant enemyA = new Combatant("enemy", 30);
-                Combatant enemyB = new Combatant("enemy", 45);
+                Standard player = null;
+                System.out.println("Welcome to the game! You are a hero who must defeat two enemies in a row.");
+                System.out.println("You will be given a choice between three classes: Standard, Glass_canon, and Tank. Each class has different stats and abilities.");
+                System.out.println("Please choose your class by typing the corresponding number:");
+                System.out.println("1. Standard (HP: 100, Attack: 10, Block: 5, Resource: 5)");
+                System.out.println("2. Glass_canon (HP: 80, Attack: 12, Block: 5, Resource: 5)");
+                System.out.println("3. Tank (HP: 130, Attack: 8, Block: 7, Resource: 5)");
+                int choice = ConsoleChoice.read(in, 1, 3);
+                while (choice == -1) {
+                    System.out.println("illegal input please try again");
+                    choice = ConsoleChoice.read(in, 1, 3);}
+                if (choice == 1) {player = new Standard("player", 100);}
+                if (choice == 2) {player = new Glass_canon("player");}
+                if (choice == 3) {player = new Tank("player");
+                    
+                }
+                Standard enemyA = new Standard("enemy", 30);
+                Standard enemyB = new Standard("enemy", 45);
                 if (playBattle(player, enemyA, in)) {
                     System.out.println("press 1 for Potion (+25 HP), press 2 for X Attack (+2 Attack)");
                     int r = ConsoleChoice.read(in, 1, 2);
